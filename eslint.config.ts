@@ -29,6 +29,9 @@ const configs = defineConfig(
 				entryPoint: path.resolve("./app/styles/index.css"),
 			},
 		},
+		rules: {
+			"better-tailwindcss/no-unknown-classes": "off"
+		}
 	},
 	playwrightConfig,
 	// {
