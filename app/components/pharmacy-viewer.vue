@@ -11,14 +11,17 @@ const canvasRef = ref<HTMLCanvasElement | undefined>(undefined);
 const isLoading = ref(true);
 const isDragging = ref(false);
 
-let currentModel: { modelName: string, model: THREE.Group | null } = { modelName: "room1-optimized", model: null };
+const currentModel: { modelName: string; model: THREE.Group | null } = {
+	modelName: "room1-optimized",
+	model: null,
+};
 
 const scene = new THREE.Scene();
 let camera: THREE.PerspectiveCamera;
 let renderer: THREE.WebGLRenderer;
 let controls: OrbitControls;
 const placedHotspots: Array<THREE.Mesh | THREE.Sprite> = [];
-const hotspotData: HotspotData[] = [];
+const hotspotData: Array<HotspotData> = [];
 let hoveredHotspot: THREE.Mesh | null = null;
 
 interface HotspotData {
@@ -38,7 +41,7 @@ loadingManager.onLoad = () => {
 
 loadingManager.onStart = () => {
 	isLoading.value = true;
-}
+};
 
 const gltfLoader = new GLTFLoader(loadingManager);
 gltfLoader.setMeshoptDecoder(MeshoptDecoder);
@@ -148,7 +151,6 @@ onMounted(() => {
 			const base = h.userData.id.includes("room") ? 0.05 : 0.08;
 			let scale = dist * base;
 
-
 			// apply hover multiplier
 			if (h === hoveredHotspot) {
 				scale *= 1.8;
@@ -179,7 +181,6 @@ function createHotspot() {
 }
 
 function createSpriteHotspot() {
-	
 	const texture = new THREE.TextureLoader().load("/textures/door-open-circle.png");
 	const material = new THREE.SpriteMaterial({
 		map: texture,
@@ -195,44 +196,60 @@ function createSpriteHotspot() {
 	return sprite;
 }
 
-function getHotspotPosition(event: MouseEvent) {
-	if (!currentModel.model) return;
-	if (isDragging.value) return;
+// New hotspot creation
+// function getHotspotPosition(event: MouseEvent) {
+// 	if (!currentModel.model) return;
+// 	if (isDragging.value) return;
 
-	const rect = canvasRef.value!.getBoundingClientRect();
+// 	const rect = canvasRef.value!.getBoundingClientRect();
 
-	mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-	mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+// 	mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+// 	mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-	raycaster.setFromCamera(mouse, camera);
+// 	raycaster.setFromCamera(mouse, camera);
 
-	const hits = raycaster.intersectObject(currentModel.model, true);
-	if (!hits.length) return;
+// 	const hits = raycaster.intersectObject(currentModel.model, true);
+// 	if (!hits.length) return;
 
-	const hit = hits[0];
+// 	const hit = hits[0];
 
-	const point = hit.point.clone();
-	const normal = hit.face?.normal?.clone();
+// 	const point = hit.point.clone();
+// 	const normal = hit.face?.normal?.clone();
 
-	if (!normal) return;
+// 	if (!normal) return;
 
-	normal.transformDirection(hit.object.matrixWorld);
-	point.add(normal.multiplyScalar(0.02));
+// 	normal.transformDirection(hit.object.matrixWorld);
+// 	point.add(normal.multiplyScalar(0.02));
 
-	const hotspot = createHotspot();
-	hotspot.position.copy(point);
+// 	const hotspot = createHotspot();
+// 	hotspot.position.copy(point);
 
-	scene.add(hotspot);
-	placedHotspots.push(hotspot);
+// 	scene.add(hotspot);
+// 	placedHotspots.push(hotspot);
 
-	const data: HotspotData = {
-		id: `hotspot_${hotspotData.length + 1}`,
-		position: [point.x, point.y, point.z],
-		entityId: "",
-	};
+// 	const data: HotspotData = {
+// 		id: `hotspot_${hotspotData.length + 1}`,
+// 		position: [point.x, point.y, point.z],
+// 		entityId: "",
+// 	};
 
-	hotspotData.push(data);
-}
+// 	hotspotData.push(data);
+// }
+
+// For exporting hotspots after creating them
+// function exportHotspots() {
+// 	const json = JSON.stringify(hotspotData, null, 2);
+
+// 	const blob = new Blob([json], { type: "application/json" });
+// 	const url = URL.createObjectURL(blob);
+
+// 	const a = document.createElement("a");
+// 	a.href = url;
+// 	a.download = "pharmacy-hotspots.json";
+// 	a.click();
+
+// 	URL.revokeObjectURL(url);
+// }
 
 function createHotspots(data: Array<HotspotData>) {
 	data.forEach((item) => {
@@ -242,7 +259,7 @@ function createHotspots(data: Array<HotspotData>) {
 
 		hotspot.userData = item;
 
-		if(!item.id.includes("room")) {
+		if (!item.id.includes("room")) {
 			const base = 0.08;
 			const dist = camera.position.distanceTo(hotspot.position);
 
@@ -252,20 +269,6 @@ function createHotspots(data: Array<HotspotData>) {
 		scene.add(hotspot);
 		placedHotspots.push(hotspot);
 	});
-}
-
-function exportHotspots() {
-	const json = JSON.stringify(hotspotData, null, 2);
-
-	const blob = new Blob([json], { type: "application/json" });
-	const url = URL.createObjectURL(blob);
-
-	const a = document.createElement("a");
-	a.href = url;
-	a.download = "pharmacy-hotspots.json";
-	a.click();
-
-	URL.revokeObjectURL(url);
 }
 
 function clearHotspots() {
@@ -289,12 +292,14 @@ function loadModel(modelName: string) {
 	if (currentModel.model) {
 		scene.remove(currentModel.model);
 		currentModel.model.traverse((obj) => {
+			/* eslint-disable @typescript-eslint/no-explicit-any */
 			if ((obj as any).geometry) (obj as any).geometry.dispose();
 			if ((obj as any).material) {
 				const mat = (obj as any).material;
 				if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
 				else mat.dispose();
 			}
+			/* eslint-enable @typescript-eslint/no-explicit-any */
 		});
 	}
 
@@ -303,7 +308,7 @@ function loadModel(modelName: string) {
 	gltfLoader.load(`/models/pharmacy/${modelName}.glb`, (gltf) => {
 		currentModel.modelName = modelName;
 		currentModel.model = gltf.scene;
-		if (modelName == "room1-optimized") {
+		if (modelName === "room1-optimized") {
 			currentModel.model.rotation.x = -0.101592653589793; // center model of room 1
 			camera.position.set(-4.09, 3.36, -1.14); // 2.79
 		} else {
@@ -318,7 +323,7 @@ function onClickHotspot(event: MouseEvent) {
 
 	const clickMouse = new THREE.Vector2(
 		((event.clientX - rect.left) / rect.width) * 2 - 1,
-		-((event.clientY - rect.top) / rect.height) * 2 + 1
+		-((event.clientY - rect.top) / rect.height) * 2 + 1,
 	);
 
 	raycaster.setFromCamera(clickMouse, camera);
@@ -352,7 +357,7 @@ watch(isLoading, async (val) => {
 		let res;
 		let hotspots;
 
-		if(currentModel.modelName === "room1-optimized") {
+		if (currentModel.modelName === "room1-optimized") {
 			res = await fetch("/data/pharmacy-hotspots-room1.json");
 			hotspots = await res.json();
 		} else {
