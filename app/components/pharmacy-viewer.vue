@@ -9,13 +9,16 @@ const route = useRoute();
 
 const canvasRef = ref<HTMLCanvasElement | undefined>(undefined);
 const isLoading = ref(true);
+const isDragging = ref(false);
+
+let currentModel: { modelName: string, model: THREE.Group | null } = { modelName: "room1-optimized", model: null };
 
 const scene = new THREE.Scene();
 let camera: THREE.PerspectiveCamera;
 let renderer: THREE.WebGLRenderer;
 let controls: OrbitControls;
-const placedHotspots: Array<THREE.Mesh> = [];
-
+const placedHotspots: Array<THREE.Mesh | THREE.Sprite> = [];
+const hotspotData: HotspotData[] = [];
 let hoveredHotspot: THREE.Mesh | null = null;
 
 interface HotspotData {
@@ -33,12 +36,15 @@ loadingManager.onLoad = () => {
 	isLoading.value = false;
 };
 
+loadingManager.onStart = () => {
+	isLoading.value = true;
+}
+
 const gltfLoader = new GLTFLoader(loadingManager);
 gltfLoader.setMeshoptDecoder(MeshoptDecoder);
 
 onMounted(() => {
 	const canvas = canvasRef.value;
-	console.log(canvas);
 
 	const sizes = {
 		width: window.innerWidth,
@@ -64,57 +70,18 @@ onMounted(() => {
 	 */
 	// Base camera
 	camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 100);
-	camera.position.set(-4.09, 3.36, -1.14); // 2.79
+	camera.position.set(-4.09, 3.36, -1.14); // Room 1
+	//camera.position.set(2.682911163086685, 3.086072024047379, -0.8272552941557033); // Room 2
 	scene.add(camera);
 
-	// Load Model
-	gltfLoader.load("/models/pharmacy/test-optimized.glb", (gltf) => {
+	// Load Initial Model
+	gltfLoader.load("/models/pharmacy/room1-optimized.glb", (gltf) => {
 		gltf.scene.rotation.x = -0.101592653589793;
+		currentModel.model = gltf.scene;
 		scene.add(gltf.scene);
 
-		// 		window.addEventListener("click", (event) => {
-		//   if (!placementMode) return;
-
-		//   const rect = canvasRef.value!.getBoundingClientRect();
-
-		// mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-		// mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-		//   raycaster.setFromCamera(mouse, camera);
-
-		//   const hits = raycaster.intersectObject(gltf.scene, true);
-
-		//   if (!hits.length) return;
-
-		//   const hit = hits[0];
-
-		// const point = hit.point.clone();
-		// const normal = hit.face?.normal.clone();
-
-		// if (!normal) return;
-
-		// // transform normal to world space
-		// normal.transformDirection(hit.object.matrixWorld);
-
-		// // push hotspot slightly above surface
-		// point.add(normal.multiplyScalar(0.02));
-
-		//   // create visual hotspot
-		//   const hotspot = createHotspot();
-		//   hotspot.position.copy(point);
-
-		//   scene.add(hotspot);
-		//   placedHotspots.push(hotspot);
-
-		//   // store data
-		//   const data: HotspotData = {
-		//     id: `hotspot_${hotspotData.length + 1}`,
-		//     position: [point.x, point.y, point.z],
-		//   };
-
-		//   hotspotData.push(data);
-
-		//   console.log("Hotspot saved:", data);
+		// window.addEventListener("click", (event) => {
+		// 	getHotspotPosition(event);
 		// });
 	});
 
@@ -143,8 +110,21 @@ onMounted(() => {
 		if (canvas === undefined) return;
 		const rect = canvas.getBoundingClientRect();
 
+		const dx = event.clientX - mouse.x;
+		const dy = event.clientY - mouse.y;
+
+		if (Math.sqrt(dx * dx + dy * dy) > 5) {
+			isDragging.value = true;
+		}
+
 		mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
 		mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+	});
+
+	window.addEventListener("pointerdown", (event) => {
+		mouse.x = event.clientX;
+		mouse.y = event.clientY;
+		isDragging.value = false;
 	});
 
 	window.addEventListener("click", onClickHotspot);
@@ -164,11 +144,19 @@ onMounted(() => {
 
 		// smooth scale animation
 		placedHotspots.forEach((h) => {
-			const isHovered = h === hoveredHotspot;
+			const dist = camera.position.distanceTo(h.position);
+			const base = h.userData.id.includes("room") ? 0.05 : 0.08;
+			let scale = dist * base;
 
-			const targetScale = isHovered ? 1.8 : 1;
 
-			h.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.12);
+			// apply hover multiplier
+			if (h === hoveredHotspot) {
+				scale *= 1.8;
+			}
+
+			const target = new THREE.Vector3(scale, scale, scale);
+
+			h.scale.lerp(target, 0.12);
 		});
 
 		renderer.render(scene, camera);
@@ -190,37 +178,165 @@ function createHotspot() {
 	return mesh;
 }
 
+function createSpriteHotspot() {
+	
+	const texture = new THREE.TextureLoader().load("/textures/door-open-circle.png");
+	const material = new THREE.SpriteMaterial({
+		map: texture,
+		color: "#ffffff",
+		transparent: true,
+		depthTest: false,
+	});
+
+	const sprite = new THREE.Sprite(material);
+
+	sprite.scale.setScalar(1);
+
+	return sprite;
+}
+
+function getHotspotPosition(event: MouseEvent) {
+	if (!currentModel.model) return;
+	if (isDragging.value) return;
+
+	const rect = canvasRef.value!.getBoundingClientRect();
+
+	mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+	mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+	raycaster.setFromCamera(mouse, camera);
+
+	const hits = raycaster.intersectObject(currentModel.model, true);
+	if (!hits.length) return;
+
+	const hit = hits[0];
+
+	const point = hit.point.clone();
+	const normal = hit.face?.normal?.clone();
+
+	if (!normal) return;
+
+	normal.transformDirection(hit.object.matrixWorld);
+	point.add(normal.multiplyScalar(0.02));
+
+	const hotspot = createHotspot();
+	hotspot.position.copy(point);
+
+	scene.add(hotspot);
+	placedHotspots.push(hotspot);
+
+	const data: HotspotData = {
+		id: `hotspot_${hotspotData.length + 1}`,
+		position: [point.x, point.y, point.z],
+		entityId: "",
+	};
+
+	hotspotData.push(data);
+}
+
 function createHotspots(data: Array<HotspotData>) {
 	data.forEach((item) => {
-		const hotspot = createHotspot();
+		const hotspot = item.id.includes("room") ? createSpriteHotspot() : createHotspot();
 
 		hotspot.position.set(item.position[0], item.position[1], item.position[2]);
 
 		hotspot.userData = item;
+
+		if(!item.id.includes("room")) {
+			const base = 0.08;
+			const dist = camera.position.distanceTo(hotspot.position);
+
+			hotspot.scale.setScalar(dist * base);
+		}
 
 		scene.add(hotspot);
 		placedHotspots.push(hotspot);
 	});
 }
 
-// function exportHotspots() {
-// 	const json = JSON.stringify(hotspotData, null, 2);
+function exportHotspots() {
+	const json = JSON.stringify(hotspotData, null, 2);
 
-// 	const blob = new Blob([json], { type: "application/json" });
-// 	const url = URL.createObjectURL(blob);
+	const blob = new Blob([json], { type: "application/json" });
+	const url = URL.createObjectURL(blob);
 
-// 	const a = document.createElement("a");
-// 	a.href = url;
-// 	a.download = "pharmacy-hotspots.json";
-// 	a.click();
+	const a = document.createElement("a");
+	a.href = url;
+	a.download = "pharmacy-hotspots.json";
+	a.click();
 
-// 	URL.revokeObjectURL(url);
-// }
+	URL.revokeObjectURL(url);
+}
 
-function onClickHotspot() {
-	if (!hoveredHotspot) return;
+function clearHotspots() {
+	for (const hotspot of placedHotspots) {
+		scene.remove(hotspot);
 
-	const data = hoveredHotspot.userData as HotspotData;
+		hotspot.geometry?.dispose();
+
+		if (Array.isArray(hotspot.material)) {
+			hotspot.material.forEach((m) => m.dispose());
+		} else {
+			hotspot.material?.dispose();
+		}
+	}
+
+	placedHotspots.length = 0;
+	hotspotData.length = 0;
+}
+
+function loadModel(modelName: string) {
+	if (currentModel.model) {
+		scene.remove(currentModel.model);
+		currentModel.model.traverse((obj) => {
+			if ((obj as any).geometry) (obj as any).geometry.dispose();
+			if ((obj as any).material) {
+				const mat = (obj as any).material;
+				if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+				else mat.dispose();
+			}
+		});
+	}
+
+	clearHotspots();
+
+	gltfLoader.load(`/models/pharmacy/${modelName}.glb`, (gltf) => {
+		currentModel.modelName = modelName;
+		currentModel.model = gltf.scene;
+		if (modelName == "room1-optimized") {
+			currentModel.model.rotation.x = -0.101592653589793; // center model of room 1
+			camera.position.set(-4.09, 3.36, -1.14); // 2.79
+		} else {
+			camera.position.set(2.682911163086685, 3.086072024047379, -0.8272552941557033);
+		}
+		scene.add(currentModel.model);
+	});
+}
+
+function onClickHotspot(event: MouseEvent) {
+	const rect = canvasRef.value!.getBoundingClientRect();
+
+	const clickMouse = new THREE.Vector2(
+		((event.clientX - rect.left) / rect.width) * 2 - 1,
+		-((event.clientY - rect.top) / rect.height) * 2 + 1
+	);
+
+	raycaster.setFromCamera(clickMouse, camera);
+
+	const hits = raycaster.intersectObjects(placedHotspots, false);
+	if (!hits.length) return;
+
+	const hotspot = hits[0]?.object as THREE.Mesh;
+	const data = hotspot.userData as HotspotData;
+
+	if (data.id === "room2") {
+		loadModel("room2-optimized");
+	}
+
+	if (data.id === "room1") {
+		loadModel("room1-optimized");
+	}
+
 	if (!data?.entityId) return;
 
 	router.push({
@@ -233,8 +349,16 @@ function onClickHotspot() {
 
 watch(isLoading, async (val) => {
 	if (val === false) {
-		const res = await fetch("/data/pharmacy-hotspots-big-items.json");
-		const hotspots = await res.json();
+		let res;
+		let hotspots;
+
+		if(currentModel.modelName === "room1-optimized") {
+			res = await fetch("/data/pharmacy-hotspots-room1.json");
+			hotspots = await res.json();
+		} else {
+			res = await fetch("/data/pharmacy-hotspots-room2.json");
+			hotspots = await res.json();
+		}
 
 		createHotspots(hotspots);
 	}
@@ -248,12 +372,10 @@ onBeforeUnmount(() => {
 
 <template>
 	<div class="relative">
-		<!-- <button
-  		class="absolute top-4 left-4 bg-white text-black p-2"
-  		@click="exportHotspots"
-		>
-  			Export hotspots
+		<!-- <button class="absolute top-4 left-4 bg-white text-black p-2" @click="exportHotspots">
+			Export hotspots
 		</button> -->
+
 		<canvas ref="canvasRef"></canvas>
 
 		<Centered v-if="isLoading" class="pointer-events-none">
