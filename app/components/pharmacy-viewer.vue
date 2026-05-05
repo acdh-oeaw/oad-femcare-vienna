@@ -1,12 +1,56 @@
 <script setup lang="ts">
+import * as CANNON from "cannon-es";
 import GUI from "lil-gui";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
+const PLAYER = {
+	height: 3,
+	radius: 0.35,
+	speed: 20,
+	acceleration: 18,
+	jumpForce: 6,
+};
+
+const world = new CANNON.World();
+world.gravity.set(0, -18, 0); // -9.82
+
+const keys = {
+	w: false,
+	a: false,
+	s: false,
+	d: false,
+};
+
+// Physics floor
+const floorShape = new CANNON.Plane();
+const floorBody = new CANNON.Body({ mass: 0 });
+floorBody.addShape(floorShape);
+floorBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+world.addBody(floorBody);
+
+const playerBody = new CANNON.Body({
+	mass: 1,
+	fixedRotation: true,
+	linearDamping: 0.01,
+});
+
+playerBody.addShape(new CANNON.Sphere(PLAYER.radius));
+playerBody.position.set(0, PLAYER.height, 0);
+
+world.addBody(playerBody);
+
+const direction = new THREE.Vector3();
+
 const router = useRouter();
 const route = useRoute();
+
+const props = defineProps<{
+	walkingMode: boolean;
+}>();
 
 const canvasRef = ref<HTMLCanvasElement | undefined>(undefined);
 const isLoading = ref(true);
@@ -23,7 +67,8 @@ const currentModel: { modelName: string; model: THREE.Group | null } = {
 const scene = new THREE.Scene();
 let camera: THREE.PerspectiveCamera;
 let renderer: THREE.WebGLRenderer;
-let controls: OrbitControls;
+let orbitControls: OrbitControls | null = null;
+let fpsControls: PointerLockControls | null = null;
 const placedHotspots: Array<THREE.Mesh | THREE.Sprite> = [];
 const hotspotData: Array<HotspotData> = [];
 let hoveredHotspot: THREE.Mesh | null = null;
@@ -97,12 +142,16 @@ onMounted(() => {
 
 	scene.add(ambientLight);
 
-	// Controls
-	controls = new OrbitControls(camera, canvas);
-	controls.target.y = 3.5;
-	controls.enableDamping = true;
-	controls.enableZoom = false;
-	controls.enablePan = false;
+	// Orbit Controls
+	orbitControls = new OrbitControls(camera, canvas);
+	orbitControls.target.y = 3.5;
+	orbitControls.enableDamping = true;
+	orbitControls.enableZoom = false;
+	orbitControls.enablePan = false;
+
+	// FPS Controls
+	fpsControls = new PointerLockControls(camera, canvas);
+	scene.add(fpsControls.object);
 
 	/**
 	 * Renderer
@@ -137,6 +186,20 @@ onMounted(() => {
 
 	window.addEventListener("click", onClickHotspot);
 
+	window.addEventListener("keydown", (e) => {
+		if (e.code === "KeyW" || e.code === "ArrowUp") keys.w = true;
+		if (e.code === "KeyS" || e.code === "ArrowDown") keys.s = true;
+		if (e.code === "KeyA" || e.code === "ArrowLeft") keys.a = true;
+		if (e.code === "KeyD" || e.code === "ArrowRight") keys.d = true;
+	});
+
+	window.addEventListener("keyup", (e) => {
+		if (e.code === "KeyW" || e.code === "ArrowUp") keys.w = false;
+		if (e.code === "KeyS" || e.code === "ArrowDown") keys.s = false;
+		if (e.code === "KeyA" || e.code === "ArrowLeft") keys.a = false;
+		if (e.code === "KeyD" || e.code === "ArrowRight") keys.d = false;
+	});
+
 	/**
 	 * GUI
 	 */
@@ -156,11 +219,62 @@ onMounted(() => {
 	/**
 	 * Animate
 	 */
-	const tick = () => {
-		controls.update();
 
+	const clock = new THREE.Clock();
+
+	const tick = () => {
+		if (!props.walkingMode) {
+			orbitControls?.update();
+		}
+
+		const delta = Math.min(clock.getDelta(), 0.05);
+		// physics step
+		world.step(1 / 60, delta, 3);
+
+		if (props.walkingMode && fpsControls?.isLocked) {
+			// ---- INPUT DIRECTION ----
+			const forward = new THREE.Vector3();
+			camera.getWorldDirection(forward);
+			forward.y = 0;
+			forward.normalize();
+
+			const right = new THREE.Vector3();
+			right.crossVectors(forward, new THREE.Vector3(0, 1, 0));
+
+			direction.set(0, 0, 0);
+
+			if (keys.w) direction.add(forward);
+			if (keys.s) direction.sub(forward);
+			if (keys.d) direction.add(right);
+			if (keys.a) direction.sub(right);
+
+			if (direction.lengthSq() > 0) {
+				direction.normalize();
+			}
+
+			// ---- TARGET VELOCITY ----
+			const accel = 35; // feel free to tune 25–60
+
+			const vel = playerBody.velocity;
+
+			const desiredVX = direction.x * PLAYER.speed;
+			const desiredVZ = direction.z * PLAYER.speed;
+
+			const diffX = desiredVX - vel.x;
+			const diffZ = desiredVZ - vel.z;
+
+			vel.x += diffX * Math.min(accel * delta, 1);
+			vel.z += diffZ * Math.min(accel * delta, 1);
+
+			// ---- CAMERA HEIGHT (realistic eyes) ----
+			camera.position.set(
+				playerBody.position.x,
+				playerBody.position.y + PLAYER.height - PLAYER.radius,
+				playerBody.position.z,
+			);
+		}
 		// hover detection
-		raycaster.setFromCamera(mouse, camera);
+		raycaster.setFromCamera(props.walkingMode ? new THREE.Vector2(0, 0) : mouse, camera);
 
 		const hits = raycaster.intersectObjects(placedHotspots, false);
 
@@ -342,12 +456,16 @@ function loadModel(modelName: string) {
 function onClickHotspot(event: MouseEvent) {
 	const rect = canvasRef.value!.getBoundingClientRect();
 
-	const clickMouse = new THREE.Vector2(
-		((event.clientX - rect.left) / rect.width) * 2 - 1,
-		-((event.clientY - rect.top) / rect.height) * 2 + 1,
-	);
+	const useCenterRay = props.walkingMode;
 
-	raycaster.setFromCamera(clickMouse, camera);
+	const rayOrigin = useCenterRay
+		? new THREE.Vector2(0, 0)
+		: new THREE.Vector2(
+				((event.clientX - rect.left) / rect.width) * 2 - 1,
+				-((event.clientY - rect.top) / rect.height) * 2 + 1,
+			);
+
+	raycaster.setFromCamera(rayOrigin, camera);
 
 	const hits = raycaster.intersectObjects(placedHotspots, false);
 	if (!hits.length) return;
@@ -397,9 +515,21 @@ watch(isLoading, async (val) => {
 	}
 });
 
+watch(
+	() => props.walkingMode,
+	(isWalk) => {
+		if (isWalk) {
+			fpsControls?.lock();
+		} else {
+			fpsControls?.unlock();
+		}
+	},
+);
+
 onBeforeUnmount(() => {
 	renderer?.dispose();
-	controls?.dispose();
+	orbitControls?.dispose();
+	fpsControls?.dispose();
 	gui?.destroy();
 });
 
@@ -413,6 +543,11 @@ defineExpose({
 		<!-- <button class="absolute top-4 left-4 bg-white text-black p-2" @click="exportHotspots">
 			Export hotspots
 		</button> -->
+
+		<div
+			v-if="props.walkingMode"
+			class="pointer-events-none absolute top-1/2 left-1/2 z-50 size-1.5 -translate-1/2 rounded-full bg-white shadow-[0_0_8px_white]"
+		/>
 
 		<canvas ref="canvasRef"></canvas>
 
