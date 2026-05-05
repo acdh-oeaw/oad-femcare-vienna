@@ -18,7 +18,7 @@ export type GetEntityResponse = PresentationViewModel;
 
 export function useGetEntity(
 	params: MaybeRef<GetEntityParams>,
-	query: GetEntityQueryParams = { place_hierarchy: true },
+	query: GetEntityQueryParams = { place_hierarchy: false },
 ) {
 	const api = useApiClient();
 

@@ -21,17 +21,19 @@ const props = defineProps<{
 	noTableSidebar: boolean;
 }>();
 
-const { data, isPending } = useGetEntity(
+const { data, isFetching } = useGetEntity(
 	computed(() => {
 		return { entityId: props.id };
 	}),
 );
 
 const isLoading = computed(() => {
-	return isPending.value;
+	return isFetching.value;
 });
 
 const entity = computed(() => {
+	console.log("isPending", isFetching.value);
+	if (isFetching.value) return null;
 	return data.value;
 });
 
