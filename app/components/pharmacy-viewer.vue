@@ -92,7 +92,7 @@ onMounted(() => {
 		// });
 	});
 
-	const ambientLight = new THREE.AmbientLight("#ffffff", 2.5);
+	const ambientLight = new THREE.AmbientLight("#ffffff", 3);
 	ambientLight.position.set(-4, 6.5, 2.5);
 
 	scene.add(ambientLight);
@@ -151,7 +151,7 @@ onMounted(() => {
 	gui.domElement.style.display = "none";
 
 	// controls
-	gui.add(ambientLight, "intensity", 0.5, 5, 0.01).name("Helligkeit");
+	gui.add(ambientLight, "intensity", 0.5, 6, 0.01).name("Helligkeit");
 
 	/**
 	 * Animate
