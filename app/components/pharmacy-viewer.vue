@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import GUI from "lil-gui";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
@@ -10,6 +11,9 @@ const route = useRoute();
 const canvasRef = ref<HTMLCanvasElement | undefined>(undefined);
 const isLoading = ref(true);
 const isDragging = ref(false);
+
+let gui: GUI | null = null;
+const guiIsVisible = ref(false);
 
 const currentModel: { modelName: string; model: THREE.Group | null } = {
 	modelName: "room1-optimized",
@@ -88,9 +92,10 @@ onMounted(() => {
 		// });
 	});
 
-	const directionalLight = new THREE.AmbientLight("#ffffff", 1);
-	directionalLight.position.set(-4, 6.5, 2.5);
-	scene.add(directionalLight);
+	const ambientLight = new THREE.AmbientLight("#ffffff", 2.5);
+	ambientLight.position.set(-4, 6.5, 2.5);
+
+	scene.add(ambientLight);
 
 	// Controls
 	controls = new OrbitControls(camera, canvas);
@@ -131,6 +136,22 @@ onMounted(() => {
 	});
 
 	window.addEventListener("click", onClickHotspot);
+
+	/**
+	 * GUI
+	 */
+	gui = new GUI({ autoPlace: false, title: "Einstellungen" });
+	const container = canvasRef.value?.parentElement;
+	container?.appendChild(gui.domElement);
+
+	gui.domElement.style.position = "absolute";
+	gui.domElement.style.top = "80px";
+	gui.domElement.style.right = "20px";
+
+	gui.domElement.style.display = "none";
+
+	// controls
+	gui.add(ambientLight, "intensity", 0.5, 5, 0.01).name("Helligkeit");
 
 	/**
 	 * Animate
@@ -352,6 +373,13 @@ function onClickHotspot(event: MouseEvent) {
 	});
 }
 
+function toggleGui() {
+	if (!gui) return;
+
+	guiIsVisible.value = !guiIsVisible.value;
+	gui.domElement.style.display = guiIsVisible.value ? "block" : "none";
+}
+
 watch(isLoading, async (val) => {
 	if (val === false) {
 		let res;
@@ -372,6 +400,11 @@ watch(isLoading, async (val) => {
 onBeforeUnmount(() => {
 	renderer?.dispose();
 	controls?.dispose();
+	gui?.destroy();
+});
+
+defineExpose({
+	toggleGui,
 });
 </script>
 

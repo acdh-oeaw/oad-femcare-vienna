@@ -3,7 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 export { default as Toggle } from "@/components/ui/toggle/Toggle.vue";
 
 export const toggleVariants = cva(
-	"inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-muted hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 dark:text-black data-[state=on]:text-primary-foreground",
+	"inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 dark:text-black data-[state=on]:text-primary-foreground",
 	{
 		variants: {
 			variant: {
@@ -13,11 +13,14 @@ export const toggleVariants = cva(
 					"border border-input bg-transparent shadow-sm hover:bg-accent hover:text-accent-foreground dark:bg-white dark:hover:bg-black dark:hover:text-white dark:data-[state=on]:bg-black dark:data-[state=on]:text-white data-[state=on]:bg-primary",
 				iiif: "bg-muted text-primary shadow-sm hover:bg-primary hover:text-primary-foreground hover:dark:bg-muted dark:bg-transparent dark:text-white dark:hover:text-white dark:data-[state=on]:bg-black dark:data-[state=on]:text-white data-[state=on]:bg-primary",
 				legend: `bg-muted text-primary shadow-sm hover:bg-(--customBackgroundColor) hover:text-primary-foreground dark:text-white dark:hover:text-white dark:data-[state=on]:text-white data-[state=on]:bg-(--customBackgroundColor)`,
+				color:
+					"bg-white shadow-sm text-black hover:bg-neutral-200 data-[state=on]:bg-brand data-[state=on]:text-white",
 			},
 			size: {
 				default: "h-9 px-3",
 				sm: "h-8 px-2",
 				lg: "h-10 px-3",
+				icon: "size-9",
 			},
 		},
 		defaultVariants: {
