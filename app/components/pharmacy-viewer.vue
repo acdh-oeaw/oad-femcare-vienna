@@ -188,8 +188,8 @@ onMounted(() => {
 	orbitControls = new OrbitControls(camera, canvas);
 	orbitControls.target.y = 3.5;
 	orbitControls.enableDamping = true;
-	orbitControls.enableZoom = true;
-	orbitControls.enablePan = true;
+	orbitControls.enableZoom = false;
+	orbitControls.enablePan = false;
 
 	// FPS Controls
 	fpsControls = new PointerLockControls(camera, canvas);
