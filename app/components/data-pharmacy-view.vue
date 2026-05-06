@@ -34,7 +34,7 @@ const toggleFullscreen = () => {
 		<div class="absolute z-5 right-0 m-5 flex-row flex gap-8">
 			<div class="flex items-center space-x-2">
 				<Switch id="walking-mode" size="icon" class="bg-white hover:bg-neutral-200" @click="toggleMode" />
-				<Label for="walking-mode" class="text-white font-medium">Walking Mode</Label>
+				<Label for="walking-mode" class="text-white font-medium">Explore Mode</Label>
 			</div>
 			<Toggle variant="color" size="icon" @click="toggleGUI">
 				<SettingsIcon />
