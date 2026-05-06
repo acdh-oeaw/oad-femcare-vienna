@@ -244,10 +244,13 @@ onMounted(() => {
 
 	fpsControls?.addEventListener("lock", () => {
 		isPointerLocked.value = true;
+		document.body.style.overflow = "";
 	});
 
 	fpsControls?.addEventListener("unlock", () => {
 		isPointerLocked.value = false;
+		document.body.style.overflow = "";
+		document.body.style.overflow = "hidden";
 	});
 	window.addEventListener("click", () => {
 		if (props.walkingMode && !isPointerLocked.value) {
