@@ -7,14 +7,25 @@ import { PointerLockControls } from "three/examples/jsm/controls/PointerLockCont
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
-const PLAYER = {
-	height: 3,
-	radius: 0.35,
-	speed: 20,
-	acceleration: 18,
-	jumpForce: 6,
+const router = useRouter();
+const route = useRoute();
+
+const props = defineProps<{
+	walkingMode: boolean;
+}>();
+
+const canvasRef = ref<HTMLCanvasElement | undefined>(undefined);
+const isLoading = ref(true);
+const isDragging = ref(false);
+
+const isPointerLocked = ref(false);
+
+const currentModel: { modelName: string; model: THREE.Group | null } = {
+	modelName: "room1-optimized",
+	model: null,
 };
 
+// Physics World for Walking Mode
 const world = new CANNON.World();
 world.gravity.set(0, -18, 0); // -9.82
 
@@ -32,6 +43,42 @@ floorBody.addShape(floorShape);
 floorBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
 world.addBody(floorBody);
 
+// Colliders
+export interface WallData {
+	x: number;
+	y: number;
+	z: number;
+	sx: number;
+	sy: number;
+	sz: number;
+	rotX?: number;
+	rotY?: number;
+	rotZ?: number;
+}
+
+const wallParamsList: Array<WallData> = [
+	{ x: 0, y: 1.5, z: -5, sx: 10, sy: 3, sz: 0.2, rotX: 0, rotY: 0, rotZ: 0 },
+	{ x: 0, y: 1.5, z: 5, sx: 10, sy: 3, sz: 0.2, rotX: 0, rotY: 0, rotZ: 0 },
+	{ x: -5, y: 1.5, z: 0, sx: 0.2, sy: 3, sz: 10, rotX: 0, rotY: 0, rotZ: 0 },
+	{ x: 5, y: 1.5, z: 0, sx: 0.2, sy: 3, sz: 10, rotX: 0, rotY: 0, rotZ: 0 },
+];
+
+const wallRefs: Array<ReturnType<typeof createWall>> = [];
+
+const walls: Array<{
+	body: CANNON.Body;
+	debug?: THREE.Mesh;
+}> = [];
+
+// Player
+const PLAYER = {
+	height: 3,
+	radius: 0.35,
+	speed: 25,
+	acceleration: 18,
+	jumpForce: 6,
+};
+
 const playerBody = new CANNON.Body({
 	mass: 1,
 	fixedRotation: true,
@@ -45,27 +92,18 @@ world.addBody(playerBody);
 
 const direction = new THREE.Vector3();
 
-const router = useRouter();
-const route = useRoute();
-
-const props = defineProps<{
-	walkingMode: boolean;
-}>();
-
-const canvasRef = ref<HTMLCanvasElement | undefined>(undefined);
-const isLoading = ref(true);
-const isDragging = ref(false);
-
 let gui: GUI | null = null;
 const guiIsVisible = ref(false);
 
-const currentModel: { modelName: string; model: THREE.Group | null } = {
-	modelName: "room1-optimized",
-	model: null,
-};
-
 const scene = new THREE.Scene();
+
+// Camera
+const CAMERA_POS = {
+	room1: new THREE.Vector3(-4.09, 3.36, -1.14),
+	room2: new THREE.Vector3(1.04, 3.57, -0.1899999),
+};
 let camera: THREE.PerspectiveCamera;
+
 let renderer: THREE.WebGLRenderer;
 let orbitControls: OrbitControls | null = null;
 let fpsControls: PointerLockControls | null = null;
@@ -73,7 +111,7 @@ const placedHotspots: Array<THREE.Mesh | THREE.Sprite> = [];
 const hotspotData: Array<HotspotData> = [];
 let hoveredHotspot: THREE.Mesh | null = null;
 
-interface HotspotData {
+export interface HotspotData {
 	id: string;
 	position: [number, number, number];
 	entityId: string;
@@ -83,6 +121,9 @@ interface HotspotData {
 const mouse = new THREE.Vector2();
 const raycaster = new THREE.Raycaster();
 
+const ambientLight = new THREE.AmbientLight("#ffffff", 3);
+
+// Loading Manager
 const loadingManager = new THREE.LoadingManager();
 loadingManager.onLoad = () => {
 	isLoading.value = false;
@@ -92,6 +133,7 @@ loadingManager.onStart = () => {
 	isLoading.value = true;
 };
 
+// GLTF Loader using MeshoptDecoder
 const gltfLoader = new GLTFLoader(loadingManager);
 gltfLoader.setMeshoptDecoder(MeshoptDecoder);
 
@@ -123,6 +165,7 @@ onMounted(() => {
 	// Base camera
 	camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 100);
 	camera.position.set(-4.09, 3.36, -1.14); // Room 1
+	//camera.position.set(1.04, 3.57, -0.1899999);
 	//camera.position.set(2.682911163086685, 3.086072024047379, -0.8272552941557033); // Room 2
 	scene.add(camera);
 
@@ -137,7 +180,6 @@ onMounted(() => {
 		// });
 	});
 
-	const ambientLight = new THREE.AmbientLight("#ffffff", 3);
 	ambientLight.position.set(-4, 6.5, 2.5);
 
 	scene.add(ambientLight);
@@ -146,8 +188,8 @@ onMounted(() => {
 	orbitControls = new OrbitControls(camera, canvas);
 	orbitControls.target.y = 3.5;
 	orbitControls.enableDamping = true;
-	orbitControls.enableZoom = false;
-	orbitControls.enablePan = false;
+	orbitControls.enableZoom = true;
+	orbitControls.enablePan = true;
 
 	// FPS Controls
 	fpsControls = new PointerLockControls(camera, canvas);
@@ -200,21 +242,24 @@ onMounted(() => {
 		if (e.code === "KeyD" || e.code === "ArrowRight") keys.d = false;
 	});
 
+	fpsControls?.addEventListener("lock", () => {
+		isPointerLocked.value = true;
+	});
+
+	fpsControls?.addEventListener("unlock", () => {
+		isPointerLocked.value = false;
+	});
+	window.addEventListener("click", () => {
+		if (props.walkingMode && !isPointerLocked.value) {
+			fpsControls?.lock();
+		}
+	});
 	/**
 	 * GUI
 	 */
-	gui = new GUI({ autoPlace: false, title: "Einstellungen" });
-	const container = canvasRef.value?.parentElement;
-	container?.appendChild(gui.domElement);
 
-	gui.domElement.style.position = "absolute";
-	gui.domElement.style.top = "80px";
-	gui.domElement.style.right = "20px";
-
-	gui.domElement.style.display = "none";
-
-	// controls
-	gui.add(ambientLight, "intensity", 0.5, 6, 0.01).name("Helligkeit");
+	rebuildGUI();
+	rebuildWalls();
 
 	/**
 	 * Animate
@@ -232,7 +277,7 @@ onMounted(() => {
 		world.step(1 / 60, delta, 3);
 
 		if (props.walkingMode && fpsControls?.isLocked) {
-			// ---- INPUT DIRECTION ----
+			// INPUT DIRECTION
 			const forward = new THREE.Vector3();
 			camera.getWorldDirection(forward);
 			forward.y = 0;
@@ -252,13 +297,13 @@ onMounted(() => {
 				direction.normalize();
 			}
 
-			// ---- TARGET VELOCITY ----
+			// TARGET VELOCITY
 			const accel = 35; // feel free to tune 25–60
 
 			const vel = playerBody.velocity;
 
-			const desiredVX = direction.x * PLAYER.speed;
-			const desiredVZ = direction.z * PLAYER.speed;
+			const desiredVX = direction.x * getPlayerSpeed();
+			const desiredVZ = direction.z * getPlayerSpeed();
 
 			const diffX = desiredVX - vel.x;
 			const diffZ = desiredVZ - vel.z;
@@ -266,7 +311,7 @@ onMounted(() => {
 			vel.x += diffX * Math.min(accel * delta, 1);
 			vel.z += diffZ * Math.min(accel * delta, 1);
 
-			// ---- CAMERA HEIGHT (realistic eyes) ----
+			// CAMERA HEIGHT (realistic eyes)
 			camera.position.set(
 				playerBody.position.x,
 				playerBody.position.y + PLAYER.height - PLAYER.radius,
@@ -280,7 +325,7 @@ onMounted(() => {
 
 		hoveredHotspot = hits.length ? (hits[0]?.object as THREE.Mesh) : null;
 
-		// smooth scale animation
+		// smooth scale animation for hotspots
 		placedHotspots.forEach((h) => {
 			const dist = camera.position.distanceTo(h.position);
 			const base = h.userData.id.includes("room") ? 0.05 : 0.08;
@@ -331,7 +376,7 @@ function createSpriteHotspot() {
 	return sprite;
 }
 
-// New hotspot creation
+// /** New hotspot creation */
 // function getHotspotPosition(event: MouseEvent) {
 // 	if (!currentModel.model) return;
 // 	if (isDragging.value) return;
@@ -371,20 +416,103 @@ function createSpriteHotspot() {
 // 	hotspotData.push(data);
 // }
 
-// For exporting hotspots after creating them
-// function exportHotspots() {
-// 	const json = JSON.stringify(hotspotData, null, 2);
+function resetCameraForRoom(room: string) {
+	const pos = room === "room1-optimized" ? CAMERA_POS.room1 : CAMERA_POS.room2;
 
-// 	const blob = new Blob([json], { type: "application/json" });
-// 	const url = URL.createObjectURL(blob);
+	camera.position.copy(pos);
 
-// 	const a = document.createElement("a");
-// 	a.href = url;
-// 	a.download = "pharmacy-hotspots.json";
-// 	a.click();
+	camera.rotation.set(0, 0, 0);
 
-// 	URL.revokeObjectURL(url);
+	orbitControls?.target.set(0, 3.5, 0);
+	orbitControls?.update();
+
+	if (fpsControls) {
+		fpsControls.object.position.copy(pos);
+	}
+}
+
+function createWall(params: {
+	x: number;
+	y: number;
+	z: number;
+	sx: number;
+	sy: number;
+	sz: number;
+	rotX?: number;
+	rotY?: number;
+	rotZ?: number;
+}) {
+	const body = new CANNON.Body({ mass: 0 });
+
+	const shape = new CANNON.Box(new CANNON.Vec3(params.sx, params.sy, params.sz));
+
+	body.addShape(shape);
+
+	body.position.set(params.x, params.y, params.z);
+
+	const quat = new CANNON.Quaternion();
+	quat.setFromEuler(params.rotX ?? 0, params.rotY ?? 0, params.rotZ ?? 0);
+
+	body.quaternion.copy(quat);
+
+	world.addBody(body);
+
+	const mesh = new THREE.Mesh(
+		new THREE.BoxGeometry(params.sx * 2, params.sy * 2, params.sz * 2),
+		new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 }),
+		//new THREE.MeshBasicMaterial({ wireframe: true, color: "red" }),
+	);
+
+	mesh.position.set(params.x, params.y, params.z);
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	mesh.quaternion.copy(body.quaternion as any);
+
+	scene.add(mesh);
+
+	const wall = { body, debug: mesh };
+	walls.push(wall);
+
+	return wall;
+}
+
+function rebuildWalls() {
+	for (const w of wallRefs) {
+		world.removeBody(w.body);
+		scene.remove(w.debug!);
+	}
+	wallRefs.length = 0;
+
+	for (const params of wallParamsList) {
+		wallRefs.push(createWall(params));
+	}
+}
+
+// function addWall() {
+// 	wallParamsList.push({
+// 		x: 0,
+// 		y: 1.5,
+// 		z: 0,
+// 		sx: 20,
+// 		sy: 3,
+// 		sz: 0.2,
+// 		rotX: 0,
+// 		rotY: 0,
+// 		rotZ: 0,
+// 	});
+
+// 	rebuildWalls();
+// 	rebuildGUI();
 // }
+
+async function loadWalls(url: string) {
+	const res = await fetch(url);
+	const data = await res.json();
+
+	wallParamsList.length = 0;
+	wallParamsList.push(...data);
+
+	rebuildWalls();
+}
 
 function createHotspots(data: Array<HotspotData>) {
 	data.forEach((item) => {
@@ -406,6 +534,28 @@ function createHotspots(data: Array<HotspotData>) {
 	});
 }
 
+function clearWalls() {
+	for (const w of wallRefs) {
+		world.removeBody(w.body);
+
+		if (w.debug) {
+			scene.remove(w.debug);
+
+			(w.debug.geometry as THREE.BufferGeometry)?.dispose();
+
+			const mat = w.debug.material;
+			if (Array.isArray(mat)) {
+				mat.forEach((m) => m.dispose());
+			} else {
+				mat?.dispose();
+			}
+		}
+	}
+
+	wallRefs.length = 0;
+	walls.length = 0;
+}
+
 function clearHotspots() {
 	for (const hotspot of placedHotspots) {
 		scene.remove(hotspot);
@@ -424,6 +574,7 @@ function clearHotspots() {
 }
 
 function loadModel(modelName: string) {
+	clearWalls();
 	if (currentModel.model) {
 		scene.remove(currentModel.model);
 		currentModel.model.traverse((obj) => {
@@ -447,7 +598,14 @@ function loadModel(modelName: string) {
 			currentModel.model.rotation.x = -0.101592653589793; // center model of room 1
 			camera.position.set(-4.09, 3.36, -1.14); // 2.79
 		} else {
-			camera.position.set(2.682911163086685, 3.086072024047379, -0.8272552941557033);
+			camera.position.set(1.04, 3.57, -0.1899999);
+			//camera.position.set(2.682911163086685, 3.086072024047379, -0.8272552941557033);
+		}
+
+		resetCameraForRoom(modelName);
+
+		if (props.walkingMode) {
+			syncPlayerToCamera();
 		}
 		scene.add(currentModel.model);
 	});
@@ -498,11 +656,87 @@ function toggleGui() {
 	gui.domElement.style.display = guiIsVisible.value ? "block" : "none";
 }
 
+function rebuildGUI() {
+	if (gui) {
+		gui.destroy();
+	}
+
+	gui = new GUI({ autoPlace: false, title: "Einstellungen" });
+
+	const container = canvasRef.value?.parentElement;
+	container?.appendChild(gui.domElement);
+
+	gui.domElement.style.position = "absolute";
+	gui.domElement.style.top = "80px";
+	gui.domElement.style.right = "20px";
+
+	gui.domElement.style.display = guiIsVisible.value ? "block" : "none";
+
+	//Light
+	gui.add(ambientLight, "intensity", 0.5, 6, 0.01).name("Helligkeit");
+
+	// const cameraDebug = {
+	// 	x: camera?.position.x ?? 0,
+	// 	y: camera?.position.y ?? 0,
+	// 	z: camera?.position.z ?? 0,
+	// };
+
+	// const camFolder = gui!.addFolder("Camera");
+
+	// camFolder.add(cameraDebug, "x", -50, 50, 0.01).onChange(() => {
+	// 	camera.position.x = cameraDebug.x;
+	// });
+
+	// camFolder.add(cameraDebug, "y", 0, 20, 0.01).onChange(() => {
+	// 	camera.position.y = cameraDebug.y;
+	// });
+
+	// camFolder.add(cameraDebug, "z", -50, 50, 0.01).onChange(() => {
+	// 	camera.position.z = cameraDebug.z;
+	// });
+
+	// wallParamsList.forEach((params, index) => {
+	// 	const folder = gui!.addFolder(`Wall ${index + 1}`);
+
+	// 	folder.add(params, "x", -20, 20, 0.1).onChange(rebuildWalls);
+	// 	folder.add(params, "y", 0, 10, 0.1).onChange(rebuildWalls);
+	// 	folder.add(params, "z", -20, 20, 0.1).onChange(rebuildWalls);
+
+	// 	folder.add(params, "sx", 0.1, 20, 0.1).onChange(rebuildWalls);
+	// 	folder.add(params, "sy", 0.1, 20, 0.1).onChange(rebuildWalls);
+	// 	folder.add(params, "sz", 0.1, 20, 0.1).onChange(rebuildWalls);
+
+	// 	folder.add(params, "rotX", -Math.PI, Math.PI, 0.01).onChange(rebuildWalls);
+	// 	folder.add(params, "rotY", -Math.PI, Math.PI, 0.01).onChange(rebuildWalls);
+	// 	folder.add(params, "rotZ", -Math.PI, Math.PI, 0.01).onChange(rebuildWalls);
+	// });
+
+	// gui.add({ addWall }, "addWall").name("Add Wall");
+	// gui.add({ exportWalls: () => exportWalls(wallParamsList) }, "exportWalls").name("Export Walls");
+}
+
+function getPlayerSpeed() {
+	return currentModel.modelName === "room1-optimized" ? 25 : 18;
+}
+
+function syncPlayerToCamera() {
+	playerBody.position.set(
+		camera.position.x,
+		camera.position.y - PLAYER.height + PLAYER.radius,
+		camera.position.z,
+	);
+
+	const dir = new THREE.Vector3();
+	camera.getWorldDirection(dir);
+
+	dir.y = 0;
+	dir.normalize();
+}
+
 watch(isLoading, async (val) => {
 	if (val === false) {
 		let res;
 		let hotspots;
-
 		if (currentModel.modelName === "room1-optimized") {
 			res = await fetch("/data/pharmacy-hotspots-room1.json");
 			hotspots = await res.json();
@@ -512,6 +746,11 @@ watch(isLoading, async (val) => {
 		}
 
 		createHotspots(hotspots);
+		loadWalls(
+			currentModel.modelName === "room1-optimized"
+				? "/data/pharmacy-walls-room1.json"
+				: "/data/pharmacy-walls-room2.json",
+		);
 	}
 });
 
@@ -519,8 +758,10 @@ watch(
 	() => props.walkingMode,
 	(isWalk) => {
 		if (isWalk) {
+			syncPlayerToCamera();
 			fpsControls?.lock();
 		} else {
+			resetCameraForRoom(currentModel.modelName);
 			fpsControls?.unlock();
 		}
 	},
@@ -540,7 +781,7 @@ defineExpose({
 
 <template>
 	<div class="relative">
-		<!-- <button class="absolute top-4 left-4 bg-white text-black p-2" @click="exportHotspots">
+		<!-- <button class="absolute top-4 left-4 bg-white text-black p-2" @click="exportHotspots(hotspotData)">
 			Export hotspots
 		</button> -->
 
