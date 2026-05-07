@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ExpandIcon, SettingsIcon, ShrinkIcon } from "lucide-vue-next";
 
+const isMobile = ref(false);
 const isFullscreen = ref(false);
 const screenRef = ref<HTMLElement | null>(null);
 
@@ -8,6 +9,22 @@ const screenRef = ref<HTMLElement | null>(null);
 const viewerRef = ref<any>(null);
 const walkingMode = ref(false);
 const showControlsOverlay = ref(false);
+
+onMounted(() => {
+	const mq = window.matchMedia("(max-width: 1024px)");
+
+	isMobile.value = mq.matches;
+
+	const handler = (e: MediaQueryListEvent) => {
+		isMobile.value = e.matches;
+	};
+
+	mq.addEventListener("change", handler);
+
+	onBeforeUnmount(() => {
+		mq.removeEventListener("change", handler);
+	});
+});
 
 const toggleMode = () => {
 	walkingMode.value = !walkingMode.value;
@@ -40,7 +57,7 @@ const toggleFullscreen = () => {
 <template>
 	<div ref="screenRef" class="relative h-full">
 		<div class="absolute z-5 right-0 m-5 flex-row flex gap-8">
-			<div class="flex items-center space-x-2">
+			<div v-if="!isMobile" class="flex items-center space-x-2">
 				<Switch
 					id="walking-mode"
 					size="icon"
