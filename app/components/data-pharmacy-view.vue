@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ExpandIcon, SettingsIcon, ShrinkIcon } from "lucide-vue-next";
+import { ExpandIcon, SettingsIcon, ShrinkIcon, XIcon } from "lucide-vue-next";
+
+import Data3DViewer from "@/components/data-3D-viewer.vue";
 
 const isMobile = ref(false);
 const isFullscreen = ref(false);
@@ -9,6 +11,7 @@ const screenRef = ref<HTMLElement | null>(null);
 const viewerRef = ref<any>(null);
 const walkingMode = ref(false);
 const showControlsOverlay = ref(false);
+const detailObject = ref<string | undefined>(undefined);
 
 onMounted(() => {
 	const mq = window.matchMedia("(max-width: 1024px)");
@@ -52,12 +55,20 @@ const toggleFullscreen = () => {
 		isFullscreen.value = false;
 	}
 };
+
+function setDetail(detailName: string | undefined) {
+	detailObject.value = detailName;
+}
+
+function closeDetail() {
+	detailObject.value = undefined;
+}
 </script>
 
 <template>
 	<div ref="screenRef" class="relative h-full">
 		<div class="absolute z-5 right-0 m-5 flex-row flex gap-8">
-			<div v-if="!isMobile" class="flex items-center space-x-2">
+			<div v-if="!isMobile && detailObject == null" class="flex items-center space-x-2">
 				<Switch
 					id="walking-mode"
 					size="icon"
@@ -66,7 +77,7 @@ const toggleFullscreen = () => {
 				/>
 				<Label for="walking-mode" class="text-white font-medium">Explore Mode</Label>
 			</div>
-			<Toggle variant="color" size="icon" @click="toggleGUI">
+			<Toggle v-if="detailObject == null" variant="color" size="icon" @click="toggleGUI">
 				<SettingsIcon />
 			</Toggle>
 			<Button size="icon" class="bg-white hover:bg-neutral-200" @click="toggleFullscreen">
@@ -74,7 +85,11 @@ const toggleFullscreen = () => {
 				<ShrinkIcon v-else class="text-black/90" />
 			</Button>
 		</div>
-
+		<div v-if="detailObject != null" class="absolute z-5 left-0 m-5">
+			<Button size="icon" class="bg-white hover:bg-neutral-200" @click.stop="closeDetail">
+				<XIcon class="text-black/90" />
+			</Button>
+		</div>
 		<Transition
 			enter-active-class="transition-all duration-500 ease-out"
 			enter-from-class="opacity-0 scale-95"
@@ -103,7 +118,17 @@ const toggleFullscreen = () => {
 			</div>
 		</Transition>
 		<VisualisationContainer v-slot="{ height, width }">
-			<PharmacyViewer v-if="height && width" ref="viewerRef" :walking-mode="walkingMode" />
+			<PharmacyViewer
+				v-if="height && width"
+				ref="viewerRef"
+				:walking-mode="walkingMode"
+				:detail-on="detailObject != null"
+				@detail="setDetail"
+			/>
+			<Data3DViewer
+				v-if="height && width && detailObject != null"
+				:model-name="detailObject"
+			></Data3DViewer>
 		</VisualisationContainer>
 	</div>
 </template>
