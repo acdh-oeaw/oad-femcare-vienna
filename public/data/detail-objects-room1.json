@@ -1,0 +1,32 @@
+[
+  {
+    "id": "detail_hotspot_1",
+    "position": [
+      -7.414178102880326,
+      3.329737818961308,
+      9.219158159918189
+    ],
+    "entityId": "",
+    "detailName": "clock"
+  },
+  {
+    "id": "detail_hotspot_2",
+    "position": [
+      7.194874853055794,
+      3.5495972756222227,
+      21.550089089531948
+    ],
+    "entityId": "",
+    "detailName": "maria-statue"
+  },
+  {
+    "id": "detail_hotspot_3",
+    "position": [
+      1.453114847322893,
+      5.567888623807965,
+      13.965564907428305
+    ],
+    "entityId": "",
+    "detailName": "statues"
+  }
+]

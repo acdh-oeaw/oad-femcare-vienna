@@ -1,0 +1,23 @@
+[
+  {
+    "id": "detail_hotspot_1",
+    "position": [
+      -3.806008031663093,
+      2.4069990302147706,
+      2.796988529985141
+    ],
+    "entityId": "",
+    "detailName": "moerser"
+  },
+  {
+    "id": "detail_hotspot_4",
+    "position": [
+      -8.482985016027877,
+      5.773460108890226,
+      -4.667959055573378
+    ],
+    "entityId": "",
+    "detailName": "egg"
+
+  }
+]

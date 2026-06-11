@@ -12,6 +12,11 @@ const route = useRoute();
 
 const props = defineProps<{
 	walkingMode: boolean;
+	detailOn: boolean;
+}>();
+
+const emit = defineEmits<{
+	(e: "detail", detailName?: string): void;
 }>();
 
 const canvasRef = ref<HTMLCanvasElement | undefined>(undefined);
@@ -24,6 +29,10 @@ const currentModel: { modelName: string; model: THREE.Group | null } = {
 	modelName: "room1-optimized",
 	model: null,
 };
+
+const isFrozen = computed(() => {
+	return props.detailOn;
+});
 
 // Physics World for Walking Mode
 const world = new CANNON.World();
@@ -115,6 +124,7 @@ export interface HotspotData {
 	id: string;
 	position: [number, number, number];
 	entityId: string;
+	detailName?: string;
 }
 
 // const hotspotData: Array<HotspotData> = [];
@@ -165,8 +175,8 @@ onMounted(() => {
 	// Base camera
 	camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 100);
 	camera.position.set(-4.09, 3.36, -1.14); // Room 1
-	//camera.position.set(1.04, 3.57, -0.1899999);
-	//camera.position.set(2.682911163086685, 3.086072024047379, -0.8272552941557033); // Room 2
+	// camera.position.set(1.04, 3.57, -0.1899999); // Room 2
+	//camera.position.set(2.682911163086685, 3.086072024047379, -0.8272552941557033);
 	scene.add(camera);
 
 	// Load Initial Model
@@ -206,6 +216,7 @@ onMounted(() => {
 	renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
 	window.addEventListener("pointermove", (event) => {
+		if (isFrozen.value) return;
 		if (canvas === undefined) return;
 		const rect = canvas.getBoundingClientRect();
 
@@ -221,14 +232,19 @@ onMounted(() => {
 	});
 
 	window.addEventListener("pointerdown", (event) => {
+		if (isFrozen.value) return;
 		mouse.x = event.clientX;
 		mouse.y = event.clientY;
 		isDragging.value = false;
 	});
 
-	window.addEventListener("click", onClickHotspot);
+	window.addEventListener("click", (event) => {
+		if (isFrozen.value) return;
+		onClickHotspot(event);
+	});
 
 	window.addEventListener("keydown", (e) => {
+		if (isFrozen.value) return;
 		if (e.code === "KeyW" || e.code === "ArrowUp") keys.w = true;
 		if (e.code === "KeyS" || e.code === "ArrowDown") keys.s = true;
 		if (e.code === "KeyA" || e.code === "ArrowLeft") keys.a = true;
@@ -236,6 +252,7 @@ onMounted(() => {
 	});
 
 	window.addEventListener("keyup", (e) => {
+		if (isFrozen.value) return;
 		if (e.code === "KeyW" || e.code === "ArrowUp") keys.w = false;
 		if (e.code === "KeyS" || e.code === "ArrowDown") keys.s = false;
 		if (e.code === "KeyA" || e.code === "ArrowLeft") keys.a = false;
@@ -243,16 +260,20 @@ onMounted(() => {
 	});
 
 	fpsControls?.addEventListener("lock", () => {
+		if (isFrozen.value) return;
 		isPointerLocked.value = true;
 		document.body.style.overflow = "";
 	});
 
 	fpsControls?.addEventListener("unlock", () => {
+		if (isFrozen.value) return;
 		isPointerLocked.value = false;
 		document.body.style.overflow = "";
 		document.body.style.overflow = "hidden";
 	});
+
 	window.addEventListener("click", () => {
+		if (isFrozen.value) return;
 		if (props.walkingMode && !isPointerLocked.value) {
 			fpsControls?.lock();
 		}
@@ -271,6 +292,11 @@ onMounted(() => {
 	const clock = new THREE.Clock();
 
 	const tick = () => {
+		if (isFrozen.value) {
+			renderer.render(scene, camera);
+			requestAnimationFrame(tick);
+			return;
+		}
 		if (!props.walkingMode) {
 			orbitControls?.update();
 		}
@@ -331,7 +357,7 @@ onMounted(() => {
 		// smooth scale animation for hotspots
 		placedHotspots.forEach((h) => {
 			const dist = camera.position.distanceTo(h.position);
-			const base = h.userData.id.includes("room") ? 0.05 : 0.08;
+			const base = h.userData.id.includes("room") || h.userData.id.includes("detail") ? 0.05 : 0.08;
 			let scale = dist * base;
 
 			// apply hover multiplier
@@ -363,8 +389,8 @@ function createHotspot() {
 	return mesh;
 }
 
-function createSpriteHotspot() {
-	const texture = new THREE.TextureLoader().load("/textures/door-open-circle.png");
+function createSpriteHotspot(spriteName: string) {
+	const texture = new THREE.TextureLoader().load(`/textures/${spriteName}.png`);
 	const material = new THREE.SpriteMaterial({
 		map: texture,
 		color: "#ffffff",
@@ -519,13 +545,20 @@ async function loadWalls(url: string) {
 
 function createHotspots(data: Array<HotspotData>) {
 	data.forEach((item) => {
-		const hotspot = item.id.includes("room") ? createSpriteHotspot() : createHotspot();
+		let hotspot: THREE.Mesh | THREE.Sprite;
+		if (item.id.includes("room")) {
+			hotspot = createSpriteHotspot("door-open-circle");
+		} else if (item.id.includes("detail")) {
+			hotspot = createSpriteHotspot("star-circle2");
+		} else {
+			hotspot = createHotspot();
+		}
 
 		hotspot.position.set(item.position[0], item.position[1], item.position[2]);
 
 		hotspot.userData = item;
 
-		if (!item.id.includes("room")) {
+		if (!item.id.includes("room") || !item.id.includes("detail")) {
 			const base = 0.08;
 			const dist = camera.position.distanceTo(hotspot.position);
 
@@ -642,6 +675,11 @@ function onClickHotspot(event: MouseEvent) {
 		loadModel("room1-optimized");
 	}
 
+	if (data.id.includes("detail")) {
+		emit("detail", data.detailName);
+		return;
+	}
+
 	if (!data?.entityId) return;
 
 	router.push({
@@ -739,15 +777,21 @@ function syncPlayerToCamera() {
 watch(isLoading, async (val) => {
 	if (val === false) {
 		let res;
+		let res2;
 		let hotspots;
+		let detailHotspots;
 		if (currentModel.modelName === "room1-optimized") {
 			res = await fetch("/data/pharmacy-hotspots-room1.json");
 			hotspots = await res.json();
+			res2 = await fetch("/data/detail-objects-room1.json");
+			detailHotspots = await res2.json();
 		} else {
 			res = await fetch("/data/pharmacy-hotspots-room2.json");
 			hotspots = await res.json();
+			res2 = await fetch("/data/detail-objects-room2.json");
+			detailHotspots = await res2.json();
 		}
-
+		createHotspots(detailHotspots);
 		createHotspots(hotspots);
 		loadWalls(
 			currentModel.modelName === "room1-optimized"
@@ -759,15 +803,39 @@ watch(isLoading, async (val) => {
 
 watch(
 	() => props.walkingMode,
-	(isWalk) => {
+	async (isWalk) => {
 		if (isWalk) {
 			syncPlayerToCamera();
 			fpsControls?.lock();
+
+			// Explore hotspots just in explore mode (needs review)
+
+			// if (currentModel.modelName === "room1-optimized") {
+			// 	res = await fetch("/data/detail-objects-room1.json");
+			// 	hotspots = await res.json();
+			// 	createHotspots(hotspots);
+			// } else {
+			// 	res = await fetch("/data/detail-objects-room2.json");
+			// 	hotspots = await res.json();
+			// 	createHotspots(hotspots);
+			// }
 		} else {
 			resetCameraForRoom(currentModel.modelName);
 			fpsControls?.unlock();
 		}
 	},
+);
+
+watch(
+  () => props.detailOn,
+  async (detailOn) => {
+    if (detailOn && props.walkingMode) {
+      fpsControls?.unlock();
+    } else if (!detailOn && props.walkingMode) {
+	await nextTick();
+      fpsControls?.lock();
+    }
+  },
 );
 
 onBeforeUnmount(() => {
@@ -789,7 +857,7 @@ defineExpose({
 		</button> -->
 
 		<div
-			v-if="props.walkingMode"
+			v-if="props.walkingMode && !isFrozen"
 			class="pointer-events-none absolute top-1/2 left-1/2 z-50 size-1.5 -translate-1/2 rounded-full bg-white shadow-[0_0_8px_white]"
 		/>
 
