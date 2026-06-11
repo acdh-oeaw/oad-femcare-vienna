@@ -827,15 +827,15 @@ watch(
 );
 
 watch(
-  () => props.detailOn,
-  async (detailOn) => {
-    if (detailOn && props.walkingMode) {
-      fpsControls?.unlock();
-    } else if (!detailOn && props.walkingMode) {
-	await nextTick();
-      fpsControls?.lock();
-    }
-  },
+	() => props.detailOn,
+	async (detailOn) => {
+		if (detailOn && props.walkingMode) {
+			fpsControls?.unlock();
+		} else if (!detailOn && props.walkingMode) {
+			await nextTick();
+			fpsControls?.lock();
+		}
+	},
 );
 
 onBeforeUnmount(() => {
