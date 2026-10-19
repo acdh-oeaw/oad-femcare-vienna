@@ -19,7 +19,7 @@ const modelDetail = computed(() => {
 			v-if="modelDetail != null"
 			class="absolute text-white text-sm mt-30 ml-20 w-56 sm:left-10 sm:top-10 sm:w-72"
 		>
-			<h1 class="text-md font-bold uppercase tracking-[0.12em] text-white/90">
+			<h1 class="font-bold uppercase tracking-[0.12em] text-white/90">
 				{{ modelDetail.title }}
 			</h1>
 			<div class="border-b border-white my-2" />

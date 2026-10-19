@@ -22,16 +22,16 @@ const configs = defineConfig(
 		name: "tailwindcss-config",
 		extends: [tailwindcssConfig],
 		rules: {
-			"better-tailwindcss/no-unknown-classes": ["error", { ignore: ["lead", "not-richtext", "not-prose", "toaster"] }],
+			"better-tailwindcss/no-unknown-classes": [
+				"error",
+				{ ignore: ["lead", "not-richtext", "not-prose", "toaster"] },
+			],
 		},
 		settings: {
 			"better-tailwindcss": {
 				entryPoint: path.resolve("./app/styles/index.css"),
 			},
 		},
-		rules: {
-			"better-tailwindcss/no-unknown-classes": "off"
-		}
 	},
 	playwrightConfig,
 	// {
