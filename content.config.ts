@@ -53,5 +53,12 @@ export default defineContentConfig({
 				title: z.string(),
 			}),
 		}),
+		pharmacy: defineCollection({
+			type: "page",
+			source: "pharmacy/*.md",
+			schema: z.object({
+				title: z.string(),
+			}),
+		}),
 	},
 });

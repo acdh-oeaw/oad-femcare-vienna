@@ -63,7 +63,9 @@ onMounted(() => {
 	scene.background = null;
 	scene.add(camera);
 
-	const ambientLight = new THREE.AmbientLight("#ffffff", 5);
+	const lightIntensity = currentModel.modelName === "statues" ? 20 : 7;
+
+	const ambientLight = new THREE.AmbientLight("#ffffff", lightIntensity);
 	ambientLight.position.set(-4, 6.5, 2.5);
 	scene.add(ambientLight);
 
@@ -109,8 +111,21 @@ function loadModel() {
 		const size = box.getSize(new THREE.Vector3());
 		const center = box.getCenter(new THREE.Vector3());
 
+		if (
+			currentModel.modelName !== "clock" &&
+			currentModel.modelName !== "moerser" &&
+			currentModel.modelName !== "egg"
+		) {
+			model.scale.set(1.5, 1.5, 1.5);
+		}
 		model.position.x -= center.x;
 		model.position.z -= center.z;
+
+		if (currentModel.modelName === "statues") {
+			model.rotation.y = 0.5;
+		} else if (currentModel.modelName === "moerser") {
+			model.rotation.y = -1.6;
+		}
 
 		orbitControls?.target.set(0, 0, 0);
 
@@ -154,7 +169,11 @@ watch(
 			class="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none"
 		></div>
 	</Transition>
-	<canvas ref="canvasRef2" class="absolute inset-0" />
+
+	<canvas ref="canvasRef2" class="absolute inset-0 z-0" />
+
+	<Data3DOverlay v-if="props.modelName" :path="props.modelName" />
+
 	<Centered v-if="isLoading" class="pointer-events-none">
 		<LoadingIndicator class="text-white" size="lg" />
 	</Centered>
